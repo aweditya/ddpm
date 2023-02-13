@@ -19,11 +19,15 @@ class LitDiffusionModel(pl.LightningModule):
         If your `model` is different for different datasets, you can use a hyperparameter to switch between them.
         Make sure that your hyperparameter behaves as expecte and is being saved correctly in `hparams.yaml`.
         """
-        self.time_embed = torch.nn.Identity
+        self.time_embed = self.time_embedding
         self.model = torch.nn.Sequential(
-            torch.nn.Linear(n_dim + 1, 4*n_dim),
-            torch.nn.Linear(4*n_dim, 2*n_dim),
-            torch.nn.Linear(2*n_dim, 1)
+            torch.nn.Linear(n_dim + 1, 20*n_dim),
+            torch.nn.ReLU(),
+            torch.nn.Linear(20*n_dim, 10*n_dim),
+            torch.nn.ReLU(),
+            torch.nn.Linear(10*n_dim, 5*n_dim),
+            torch.nn.ReLU(),
+            torch.nn.Linear(5*n_dim, n_dim)
         )
 
         """
@@ -37,6 +41,9 @@ class LitDiffusionModel(pl.LightningModule):
         """
         [self.alpha_t, self.alpha_bar_t, self.beta_t] = self.init_alpha_beta_schedule(lbeta, ubeta)
 
+    def time_embedding(self, t):
+        return t/self.n_steps
+
     def forward(self, x, t):
         """
         Similar to `forward` function in `nn.Module`. 
@@ -46,7 +53,7 @@ class LitDiffusionModel(pl.LightningModule):
         if not isinstance(t, torch.Tensor):
             t = torch.LongTensor([t]).expand(x.size(0))
         t_embed = self.time_embed(t)
-        return self.model(torch.cat((x, t_embed), dim=1).float())
+        return self.model(torch.cat((x, t_embed[:, None]), dim=1).float())
 
     def init_alpha_beta_schedule(self, lbeta, ubeta):
         """
@@ -91,13 +98,13 @@ class LitDiffusionModel(pl.LightningModule):
         [2]: https://pytorch-lightning.readthedocs.io/en/stable/
         [3]: https://www.pytorchlightning.ai/tutorials
         """
-        n_samples, _ = batch.size(0)
-        t = torch.randint(low=0, high=self.n_steps-1, size=[n_samples])
-        epsilon = torch.normal(size=n_samples)
+        n_samples = batch.size(0)
+        t = torch.randint(low=0, high=self.n_steps, size=[n_samples])
+        epsilon = torch.randn(size=(n_samples, self.n_dim))
 
-        batch_updated = torch.sqrt(self.alpha_bar_t[t]) * batch + torch.sqrt(1 - self.alpha_bar_t[t]) * epsilon
+        batch_updated = torch.sqrt(self.alpha_bar_t[t][:, None]) * batch + torch.sqrt(1 - self.alpha_bar_t[t][:, None]) * epsilon
         epsilon_theta = self.forward(batch_updated, t)
-        loss =  torch.nn.MSELoss(reduction='sum')
+        loss =  torch.nn.MSELoss()
         return loss(epsilon_theta, epsilon)
 
     def sample(self, n_samples, progress=False, return_intermediate=False):
@@ -114,7 +121,18 @@ class LitDiffusionModel(pl.LightningModule):
             i.e. a Tensor of size (n_samples, n_dim) and a list of `self.n_steps` Tensors of size (n_samples, n_dim) each.
             Return: (n_samples, n_dim)(final result), [(n_samples, n_dim)(intermediate) x n_steps]
         """
-        pass
+        samples = torch.randn(size=(n_samples, self.n_dim))
+        intermediate_samples = []
+        for t in reversed(range(self.n_steps)):
+            z = torch.randn(size=(n_samples, self.n_dim))
+            samples = 1/torch.sqrt(self.alpha_t[t]) * (samples - self.beta_t[t] / torch.sqrt(1  - self.alpha_bar_t[t]) * self.forward(samples, t)) \
+                + torch.sqrt(self.beta_t[t]) * z
+            intermediate_samples.append(samples)
+
+        if not return_intermediate:
+            return samples
+        else:
+            return samples, intermediate_samples
 
     def configure_optimizers(self):
         """
@@ -123,4 +141,5 @@ class LitDiffusionModel(pl.LightningModule):
         You may choose to add certain hyperparameters of the optimizers to the `train.py` as well.
         In our experiments, we chose one good value of optimizer hyperparameters for all experiments.
         """
-        return torch.optim.Adam
+        # return torch.optim.Adam(self.model.parameters())
+        return torch.optim.SGD(self.model.parameters())
