@@ -72,8 +72,8 @@ class LitDiffusionModel(pl.LightningModule):
         """
         Sample from p given x_t.
         """
-
-        pass
+        mu_theta = 1/torch.sqrt(self.alpha_t[t]) * (x - self.beta_t[t] / torch.sqrt(1  - self.alpha_bar_t[t]) * self.forward(x, t))
+        return torch.normal(mean=mu_theta, std=self.beta_t[t]*torch.eye(n=self.n_dim))
 
     def training_step(self, batch, batch_idx):
         """
