@@ -39,7 +39,7 @@ class LitDiffusionModel(pl.LightningModule):
         """
         Sets up variables for noise schedule
         """
-        [self.alpha_t, self.alpha_bar_t, self.beta_t] = self.init_alpha_beta_schedule(lbeta, ubeta)
+        [self.alpha, self.alpha_bar, self.beta] = self.init_alpha_beta_schedule(lbeta, ubeta)
 
     def time_embedding(self, t):
         return t/self.n_steps
@@ -61,26 +61,26 @@ class LitDiffusionModel(pl.LightningModule):
         switch between various schedules for answering q4 in depth. Make sure that this hyperparameter 
         is included correctly while saving and loading your checkpoints.
         """
-        beta_t = torch.arange(lbeta, self.n_steps, ubeta)
-        alpha_t = 1 - beta_t
-        alpha_bar_t = torch.ones(self.n_steps)        
-        alpha_bar_t[0] = alpha_t[0]
+        beta = torch.arange(lbeta, self.n_steps, ubeta)
+        alpha = 1 - beta
+        alpha_bar = torch.ones(self.n_steps)        
+        alpha_bar[0] = alpha[0]
         for t in range(1, self.n_steps):
-            alpha_bar_t[t] = alpha_bar_t[t-1] * alpha_t[t]
-        return [alpha_t, alpha_bar_t, beta_t]
+            alpha_bar[t] = alpha_bar[t-1] * alpha[t]
+        return [alpha, alpha_bar, beta]
 
     def q_sample(self, x, t):
         """
         Sample from q given x_t.
         """
-        return torch.normal(mean=torch.sqrt(1 - self.beta_t[t])*x, std=self.beta_t[t]*torch.eye(n=self.n_dim))
+        return torch.normal(mean=torch.sqrt(1 - self.beta[t])*x, std=self.beta[t]*torch.eye(n=self.n_dim))
 
     def p_sample(self, x, t):
         """
         Sample from p given x_t.
         """
-        mu_theta = 1/torch.sqrt(self.alpha_t[t]) * (x - self.beta_t[t] / torch.sqrt(1  - self.alpha_bar_t[t]) * self.forward(x, t))
-        return torch.normal(mean=mu_theta, std=self.beta_t[t]*torch.eye(n=self.n_dim))
+        mu_theta = 1/torch.sqrt(self.alpha[t]) * (x - self.beta[t] / torch.sqrt(1  - self.alpha_bar[t]) * self.forward(x, t))
+        return torch.normal(mean=mu_theta, std=self.beta[t]*torch.eye(n=self.n_dim))
 
     def training_step(self, batch, batch_idx):
         """
@@ -102,7 +102,7 @@ class LitDiffusionModel(pl.LightningModule):
         t = torch.randint(low=0, high=self.n_steps, size=[n_samples])
         epsilon = torch.randn(size=(n_samples, self.n_dim))
 
-        batch_updated = torch.sqrt(self.alpha_bar_t[t][:, None]) * batch + torch.sqrt(1 - self.alpha_bar_t[t][:, None]) * epsilon
+        batch_updated = torch.sqrt(self.alpha_bar[t][:, None]) * batch + torch.sqrt(1 - self.alpha_bar[t][:, None]) * epsilon
         epsilon_theta = self.forward(batch_updated, t)
         loss =  torch.nn.MSELoss()
         return loss(epsilon_theta, epsilon)
@@ -125,8 +125,8 @@ class LitDiffusionModel(pl.LightningModule):
         intermediate_samples = []
         for t in reversed(range(self.n_steps)):
             z = torch.randn(size=(n_samples, self.n_dim))
-            samples = 1/torch.sqrt(self.alpha_t[t]) * (samples - self.beta_t[t] / torch.sqrt(1  - self.alpha_bar_t[t]) * self.forward(samples, t)) \
-                + torch.sqrt(self.beta_t[t]) * z
+            samples = 1/torch.sqrt(self.alpha[t]) * (samples - self.beta[t] / torch.sqrt(1  - self.alpha_bar[t]) * self.forward(samples, t)) \
+                + torch.sqrt(self.beta[t]) * z
             intermediate_samples.append(samples)
 
         if not return_intermediate:
@@ -141,5 +141,4 @@ class LitDiffusionModel(pl.LightningModule):
         You may choose to add certain hyperparameters of the optimizers to the `train.py` as well.
         In our experiments, we chose one good value of optimizer hyperparameters for all experiments.
         """
-        # return torch.optim.Adam(self.model.parameters())
-        return torch.optim.SGD(self.model.parameters())
+        return torch.optim.Adam(self.model.parameters())
