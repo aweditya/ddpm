@@ -21,13 +21,13 @@ class LitDiffusionModel(pl.LightningModule):
         """
         self.time_embed = self.time_embedding
         self.model = torch.nn.Sequential(
-            torch.nn.Linear(n_dim + 1, 20*n_dim),
+            torch.nn.Linear(n_dim + 1, 256),
             torch.nn.ReLU(),
-            torch.nn.Linear(20*n_dim, 10*n_dim),
+            torch.nn.Linear(256, 256),
             torch.nn.ReLU(),
-            torch.nn.Linear(10*n_dim, 5*n_dim),
+            torch.nn.Linear(256, 256),
             torch.nn.ReLU(),
-            torch.nn.Linear(5*n_dim, n_dim)
+            torch.nn.Linear(256, n_dim)
         )
 
         """
@@ -61,7 +61,7 @@ class LitDiffusionModel(pl.LightningModule):
         switch between various schedules for answering q4 in depth. Make sure that this hyperparameter 
         is included correctly while saving and loading your checkpoints.
         """
-        beta = torch.arange(lbeta, self.n_steps, ubeta)
+        beta = torch.linspace(start=lbeta, end=ubeta, steps=self.n_steps)
         alpha = 1 - beta
         alpha_bar = torch.ones(self.n_steps)        
         alpha_bar[0] = alpha[0]
@@ -73,14 +73,14 @@ class LitDiffusionModel(pl.LightningModule):
         """
         Sample from q given x_t.
         """
-        return torch.normal(mean=torch.sqrt(1 - self.beta[t])*x, std=self.beta[t]*torch.eye(n=self.n_dim))
+        return torch.normal(mean=torch.sqrt(self.alpha[t])*x, std=torch.sqrt(self.beta[t])*torch.eye(n=self.n_dim))
 
     def p_sample(self, x, t):
         """
         Sample from p given x_t.
         """
         mu_theta = 1/torch.sqrt(self.alpha[t]) * (x - self.beta[t] / torch.sqrt(1  - self.alpha_bar[t]) * self.forward(x, t))
-        return torch.normal(mean=mu_theta, std=self.beta[t]*torch.eye(n=self.n_dim))
+        return torch.normal(mean=mu_theta, std=torch.sqrt(self.beta[t])*torch.eye(n=self.n_dim))
 
     def training_step(self, batch, batch_idx):
         """
@@ -98,9 +98,9 @@ class LitDiffusionModel(pl.LightningModule):
         [2]: https://pytorch-lightning.readthedocs.io/en/stable/
         [3]: https://www.pytorchlightning.ai/tutorials
         """
-        n_samples = batch.size(0)
+        n_samples, _ = batch.shape
         t = torch.randint(low=0, high=self.n_steps, size=[n_samples])
-        epsilon = torch.randn(size=(n_samples, self.n_dim))
+        epsilon = torch.randn(size=batch.shape)
 
         batch_updated = torch.sqrt(self.alpha_bar[t][:, None]) * batch + torch.sqrt(1 - self.alpha_bar[t][:, None]) * epsilon
         epsilon_theta = self.forward(batch_updated, t)
@@ -125,7 +125,7 @@ class LitDiffusionModel(pl.LightningModule):
         intermediate_samples = []
         for t in reversed(range(self.n_steps)):
             z = torch.randn(size=(n_samples, self.n_dim))
-            samples = 1/torch.sqrt(self.alpha[t]) * (samples - self.beta[t] / torch.sqrt(1  - self.alpha_bar[t]) * self.forward(samples, t)) \
+            samples = 1/torch.sqrt(self.alpha[t]) * (samples - (self.beta[t] / torch.sqrt(1 - self.alpha_bar[t])) * self.forward(samples, t)) \
                 + torch.sqrt(self.beta[t]) * z
             intermediate_samples.append(samples)
 
