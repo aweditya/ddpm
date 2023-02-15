@@ -1,5 +1,5 @@
-# explore-diffusion
-[CS726-2023] Programming assignment exploring diffusion models
+# Explore Diffusion
+This repository contains my implementation of a Denoising Diffusion Probabilistic Model (DDPM) which was done as part of the course, CS 726: Advanced Machine Learning by Prof. Sunita Sarawagi in Spring 2022-23. Thanks to Ashutosh Sathe and Swaroop Nath for making the assignment.
 
 # Getting started
 
