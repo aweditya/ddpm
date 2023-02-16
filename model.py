@@ -2,7 +2,7 @@ import torch
 import pytorch_lightning as pl
 
 class LitDiffusionModel(pl.LightningModule):
-    def __init__(self, n_dim=3, n_steps=200, lbeta=1e-5, ubeta=1e-2, schedule='cosine', s=0.008):
+    def __init__(self, n_dim=3, n_steps=200, lbeta=1e-5, ubeta=1e-2, schedule='linear', s=0.008):
         super().__init__()
         """
         If you include more hyperparams (e.g. `n_layers`), be sure to add that to `argparse` from `train.py`.
@@ -71,13 +71,14 @@ class LitDiffusionModel(pl.LightningModule):
             for t in range(1, self.n_steps):
                 alpha_bar[t] = alpha_bar[t-1] * alpha[t]
         elif self.schedule == 'cosine':
-            t = torch.arange(start=0, step=1, end=self.n_steps)
+            t = torch.linspace(start=0, end=self.n_steps, steps=self.n_steps+1)
             f = torch.cos((t/self.n_steps + self.s)/(1 + self.s) * torch.pi/2) ** 2
             alpha_bar = f/f[0]
             alpha = torch.ones(self.n_steps)
-            for i in range(1, self.n_steps):
-                alpha[i] = 1 - alpha_bar[i] / alpha_bar[i-1]
+            for i in range(self.n_steps):
+                alpha[i] = alpha_bar[i+1] / alpha_bar[i]
 
+            alpha_bar = alpha_bar[1:]
             beta = 1 - alpha
         return [alpha, alpha_bar, beta]
 
