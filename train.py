@@ -11,6 +11,8 @@ model_args.add_argument('--n_dim', type=int, default=3, help='Number of dimensio
 model_args.add_argument('--n_steps', type=int, default=50, help='Number of diffusion steps')
 model_args.add_argument('--lbeta', type=float, default=1e-5, help='Lower bound of beta')
 model_args.add_argument('--ubeta', type=float, default=1.28e-2, help='Upper bound of beta')
+model_args.add_argument('--schedule', type=str, default='cosine', choices=['linear', 'cosine'], help='Noise schedule')
+model_args.add_argument('--s', type=float, default=0.008, help='Hyperparameter for cosine schedule')
 
 training_args = parser.add_argument_group('training')
 training_args.add_argument('--seed', type=int, default=1618, help='Random seed for experiments')
@@ -25,6 +27,8 @@ n_dim = args.n_dim
 n_steps = args.n_steps
 lbeta = args.lbeta
 ubeta = args.ubeta
+schedule = args.schedule
+s = args.s
 
 pl.seed_everything(args.seed)
 batch_size = args.batch_size
@@ -35,7 +39,9 @@ litmodel = LitDiffusionModel(
     n_dim=n_dim, 
     n_steps=n_steps, 
     lbeta=lbeta, 
-    ubeta=ubeta
+    ubeta=ubeta,
+    schedule=schedule,
+    s=s
 )
 
 train_dataset = ThreeDSinDataset(args.train_data_path)
