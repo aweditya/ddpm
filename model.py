@@ -2,7 +2,7 @@ import torch
 import pytorch_lightning as pl
 
 class LitDiffusionModel(pl.LightningModule):
-    def __init__(self, n_dim=3, n_steps=200, lbeta=1e-5, ubeta=1e-2):
+    def __init__(self, n_dim=3, n_steps=200, lbeta=1e-5, ubeta=1e-2, schedule='cosine', s=0.008):
         super().__init__()
         """
         If you include more hyperparams (e.g. `n_layers`), be sure to add that to `argparse` from `train.py`.
@@ -35,6 +35,8 @@ class LitDiffusionModel(pl.LightningModule):
         """
         self.n_steps = n_steps
         self.n_dim = n_dim
+        self.schedule = schedule
+        self.s = s
 
         """
         Sets up variables for noise schedule
@@ -61,12 +63,22 @@ class LitDiffusionModel(pl.LightningModule):
         switch between various schedules for answering q4 in depth. Make sure that this hyperparameter 
         is included correctly while saving and loading your checkpoints.
         """
-        beta = torch.linspace(start=lbeta, end=ubeta, steps=self.n_steps)
-        alpha = 1 - beta
-        alpha_bar = torch.ones(self.n_steps)        
-        alpha_bar[0] = alpha[0]
-        for t in range(1, self.n_steps):
-            alpha_bar[t] = alpha_bar[t-1] * alpha[t]
+        if self.schedule == 'linear':
+            beta = torch.linspace(start=lbeta, end=ubeta, steps=self.n_steps)
+            alpha = 1 - beta
+            alpha_bar = torch.ones(self.n_steps)        
+            alpha_bar[0] = alpha[0]
+            for t in range(1, self.n_steps):
+                alpha_bar[t] = alpha_bar[t-1] * alpha[t]
+        elif self.schedule == 'cosine':
+            t = torch.arange(start=0, step=1, end=self.n_steps)
+            f = torch.cos((t/self.n_steps + self.s)/(1 + self.s) * torch.pi/2) ** 2
+            alpha_bar = f/f[0]
+            alpha = torch.ones(self.n_steps)
+            for i in range(1, self.n_steps):
+                alpha[i] = 1 - alpha_bar[i] / alpha_bar[i-1]
+
+            beta = 1 - alpha
         return [alpha, alpha_bar, beta]
 
     def q_sample(self, x, t):
